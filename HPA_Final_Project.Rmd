@@ -1,0 +1,1212 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+plot(cars)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+```{r}
+install.packages('devtools')
+
+```
+
+```{r}
+library('devtools')
+
+library(ggplot2)
+```
+
+```{r}
+devtools::install_github("abresler/nbastatR")
+
+library("nbastatR")
+
+#this is the dataset, will take a long time to run but should only have to do it once
+```
+
+```{r}
+# Scrape regular season data from 2018-2019
+Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 3)
+reg_data <- as.data.frame(game_logs(seasons = 2018:2019))
+
+# View data 
+tail(reg_data)
+```
+
+### Team Analysis
+
+```{r}
+#This chunk creates team level stats of basic metrics such as field goals, rebounds, blocks, and assists
+
+# Extract game data
+games <- unique(reg_data[, c("yearSeason", "slugSeason", "dateGame", "idGame", "slugTeam", "slugOpponent", "outcomeGame")])
+
+## Create team stats 
+
+# Create data frame to store results
+team_stats <- as.data.frame(matrix(NA, nrow = nrow(games), ncol = 17))
+# Name result columns
+names(team_stats) <- c("fgm", "fga", "fg3m", "fg3a", "fg2m",
+                       "fg2a", "ftm", "fta", "oreb", "dreb",
+                       "treb", "ast", "stl", "blk", "tov",
+                       "pf", "pts")
+
+for(i in 1:nrow(games)){
+  # Extract info for game for that team
+  temp <- reg_data[reg_data$yearSeason == games$yearSeason[i] &
+                     reg_data$slugSeason == games$slugSeason[i] &
+                     reg_data$idGame == games$idGame[i] &
+                     reg_data$slugTeam == games$slugTeam[i],]
+  # Calculate stats
+  team_stats$fgm[i] <- sum(temp$fgm, na.rm = T)
+  team_stats$fga[i] <- sum(temp$fga, na.rm = T)
+  team_stats$fg3m[i] <- sum(temp$fg3m, na.rm = T)
+  team_stats$fg3a[i] <- sum(temp$fg3a, na.rm = T)
+  team_stats$fg2m[i] <- sum(temp$fg2m, na.rm =T)
+  team_stats$fg2a[i] <- sum(temp$fg2a, na.rm = T)
+  team_stats$ftm[i] <- sum(temp$ftm, na.rm = T)
+  team_stats$fta[i] <- sum(temp$fta, na.rm = T)
+  team_stats$oreb[i] <- sum(temp$oreb, na.rm = T)
+  team_stats$dreb[i] <- sum(temp$dreb, na.rm = T)
+  team_stats$treb[i] <- sum(temp$treb, na.rm = T)
+  team_stats$ast[i] <- sum(temp$ast, na.rm =T)
+  team_stats$blk[i] <- sum(temp$blk, na.rm =T)
+  team_stats$stl[i] <- sum(temp$stl, na.rm =T)
+  team_stats$tov[i] <- sum(temp$tov, na.rm = T)
+  team_stats$pf[i] <- sum(temp$pf, na.rm = T)
+  team_stats$pts[i] <- sum(temp$pts, na.rm =T)
+}
+
+
+dim(team_stats)
+
+# View team stats
+summary(team_stats)
+
+```
+
+```{r}
+#Stats added to team level analysis which add averages on offensive and defensive ends for teams over their past 10 games respectively. Using this for team level analysis for final report
+
+# Joins stats and game info
+team_game <- cbind.data.frame(games, team_stats)
+
+# Convert date to days
+# Day calculator
+day_calc <- function(dates){
+  x <- as.POSIXct(dates)
+  return(floor(unclass(x)/86400))
+}
+# Add days to data
+team_game$days <- day_calc(team_game$dateGame)
+
+
+## Calculate previous offensive & defensive averages
+
+# Create data frames to store results
+team_1_off <- team_1_def <- team_2_off <- team_2_def <- 
+  as.data.frame(matrix(NA, nrow = nrow(games), ncol = ncol(team_stats)))
+
+# Name result columns
+names(team_1_off) <- names(team_2_off) <- names(team_1_def) <- names(team_2_def) <- names(team_stats)
+
+# Loop through to calculate past averages
+for(i in 1:nrow(games)){
+  # Extract previous games for team 1 offense
+  temp_1 <- team_game[team_game$slugSeason == team_game$slugSeason[i] &
+                        team_game$slugTeam == team_game$slugTeam[i] &
+                        team_game$days < team_game$days[i],]
+  # If any exist
+  if(nrow(temp_1) > 0){
+    # Calculate previous averages
+    team_1_off[i, c("fgm", "fga", "fg3m", "fg3a", "fg2m",
+                    "fg2a", "ftm", "fta", "oreb", "dreb",
+                    "treb", "ast", "stl", "blk", "tov",
+                    "pf", "pts")] <- colMeans(temp_1[, c("fgm", "fga", "fg3m", "fg3a", "fg2m",
+                                                         "fg2a", "ftm", "fta", "oreb", "dreb",
+                                                         "treb", "ast", "stl", "blk", "tov",
+                                                         "pf", "pts")], na.rm = T)
+  }
+  
+  # Extract previous games for team 1 defense
+  temp_2 <- team_game[team_game$slugSeason == team_game$slugSeason[i] &
+                        team_game$slugOpponent == team_game$slugTeam[i] &
+                        team_game$days < team_game$days[i],]
+  # If any exist
+  if(nrow(temp_2) > 0){
+    # Calculate past defensive averages
+    team_1_def[i, c("fgm", "fga", "fg3m", "fg3a", "fg2m",
+                    "fg2a", "ftm", "fta", "oreb", "dreb",
+                    "treb", "ast", "stl", "blk", "tov",
+                    "pf", "pts")] <- colMeans(temp_2[, c("fgm", "fga", "fg3m", "fg3a", "fg2m",
+                                                         "fg2a", "ftm", "fta", "oreb", "dreb",
+                                                         "treb", "ast", "stl", "blk", "tov",
+                                                         "pf", "pts")], na.rm = T)
+  }
+  
+  # Extract previous games for team 2 offense
+  temp_3 <- team_game[team_game$slugSeason == team_game$slugSeason[i] &
+                        team_game$slugTeam == team_game$slugOpponent[i] &
+                        team_game$days < team_game$days[i],]
+  # If any exist
+  if(nrow(temp_3) > 0){
+    # Calculate past averages
+    team_2_off[i, c("fgm", "fga", "fg3m", "fg3a", "fg2m",
+                    "fg2a", "ftm", "fta", "oreb", "dreb",
+                    "treb", "ast", "stl", "blk", "tov",
+                    "pf", "pts")] <- colMeans(temp_3[, c("fgm", "fga", "fg3m", "fg3a", "fg2m",
+                                                         "fg2a", "ftm", "fta", "oreb", "dreb",
+                                                         "treb", "ast", "stl", "blk", "tov",
+                                                         "pf", "pts")], na.rm = T)
+  }
+  
+  # Extract previous games for team 2 defense
+  temp_4 <- team_game[team_game$slugSeason == team_game$slugSeason[i] &
+                        team_game$slugOpponent == team_game$slugOpponent[i] &
+                        team_game$days < team_game$days[i],]
+  # If any exist
+  if(nrow(temp_4) > 0){
+    # Calculate past averages
+    team_2_def[i, c("fgm", "fga", "fg3m", "fg3a", "fg2m",
+                    "fg2a", "ftm", "fta", "oreb", "dreb",
+                    "treb", "ast", "stl", "blk", "tov",
+                    "pf", "pts")] <- colMeans(temp_4[, c("fgm", "fga", "fg3m", "fg3a", "fg2m",
+                                                         "fg2a", "ftm", "fta", "oreb", "dreb",
+                                                         "treb", "ast", "stl", "blk", "tov",
+                                                         "pf", "pts")], na.rm = T)
+  }
+  
+}
+
+
+# Calculate pctfg, pctfg2 pctfg3, pctft
+team_1_off$pctfg <- team_1_off$fgm/team_1_off$fga
+team_1_off$pctfg2 <- team_1_off$fg2m/team_1_off$fg2a
+team_1_off$pctfg3 <- team_1_off$fg3m/team_1_off$fg3a
+team_1_off$pctft <- team_1_off$ftm/team_1_off$fta
+
+team_2_off$pctfg <- team_2_off$fgm/team_2_off$fga
+team_2_off$pctfg2 <- team_2_off$fg2m/team_2_off$fg2a
+team_2_off$pctfg3 <- team_2_off$fg3m/team_2_off$fg3a
+team_2_off$pctft <- team_2_off$ftm/team_2_off$fta
+
+team_1_def$pctfg <- team_1_def$fgm/team_1_def$fga
+team_1_def$pctfg2 <- team_1_def$fg2m/team_1_def$fg2a
+team_1_def$pctfg3 <- team_1_def$fg3m/team_1_def$fg3a
+team_1_def$pctft <- team_1_def$ftm/team_1_def$fta
+
+team_2_def$pctfg <- team_2_def$fgm/team_2_def$fga
+team_2_def$pctfg2 <- team_2_def$fg2m/team_2_def$fg2a
+team_2_def$pctfg3 <- team_2_def$fg3m/team_2_def$fg3a
+team_2_def$pctft <- team_2_def$ftm/team_2_def$fta
+
+# Give correct names
+names(team_1_off) <- paste(names(team_1_off), "_1_off", sep = "")
+names(team_2_off) <- paste(names(team_2_off), "_2_off", sep = "")
+names(team_1_def) <- paste(names(team_1_def), "_1_def", sep = "")
+names(team_2_def) <- paste(names(team_2_def), "_2_def", sep = "")
+
+# Join into results data frame
+game_data <- cbind.data.frame(games, team_1_off, team_1_def, team_2_off, team_2_def)
+
+# Add points scored for each team
+team_1_points <- team_2_points <- rep(NA, nrow(game_data))
+
+for(i in 1:nrow(game_data)){
+  team_1_points[i] <- team_game$pts[team_game$slugSeason == team_game$slugSeason[i] &
+                                      team_game$dateGame == team_game$dateGame[i] &
+                                      team_game$slugTeam == team_game$slugTeam[i]]
+  team_2_points[i] <- team_game$pts[team_game$slugSeason == team_game$slugSeason[i] &
+                                      team_game$dateGame == team_game$dateGame[i] &
+                                      team_game$slugTeam == team_game$slugOpponent[i]]
+}
+
+game_data$team_1_points <- team_1_points
+game_data$team_2_points <- team_2_points
+
+```
+
+
+```{r}
+head(game_data, 50)
+```
+
+fgm_1_off = average amount of field goals made in last 10 games by team 1, fgm_1_def= average field goals scored against team 1 by opponents in last 10 games, fgm_2_off = average amount of field goals made in last 10 games by team 2, fgm_2_def = average field goals scored against team 2 by opponents in last 10 games
+
+```{r}
+summary(game_data[,-c(1:7)])
+```
+
+```{r}
+#Graph showing density plot of points scored by outcome
+
+g_1 <- ggplot(game_data, aes(x = team_1_points, fill = outcomeGame)) + # Set x as team 1 points and fill as game outcome
+  geom_density(alpha = 0.5) + # Select density plot and set transperancy (alpha)
+    theme_set(theme_bw(base_size = 22) ) + # Set theme and text size
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "Points Scored", title = "Points Scored by Outcome",
+       fill = "Outcome") + # Set labels
+  scale_fill_manual(values = c("W" = "green", "L" = "tomato"), # Set fill colors manually
+                    labels = c("W" = "Win", "L" = "Loss")) # Set labels for fill
+g_1 # Generate plot
+```
+
+```{r}
+#Graph showing turnovers vs assists based on the outcome of the game
+
+g_2 <- ggplot(game_data,
+              aes(x = tov_1_off,
+                  y = ast_1_off,
+                  color = outcomeGame)) +
+  geom_point(alpha = 0.8) +
+  labs(x = "Turnovers", y = "Assists", color = "Outcome", # Set labels
+       title = "Turnovers vs. Assists") +
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) # Remove grid
+g_2
+```
+
+```{r}
+#This chunk creates a dataframe of data on a individual player level for each game of the season
+#Will be able to use this for individual player level analysis because it includes minutes played, back to back statistics, and days rest.
+
+library(dplyr)
+
+player_df <- reg_data %>%
+  select(-c(isWin, slugLeague, urlTeamSeasonLogo, urlPlayerStats, urlPlayerThumbnail, urlPlayerHeadshot, urlPlayerActionPhoto, urlPlayerPhoto, idTeam, slugMatchup, slugTeamLoser, slugTeamWinner, hasVideo)) %>%
+  group_by(namePlayer, idGame, nameTeam) 
+
+tail(player_df)
+
+```
+
+### Models/Predictions
+
+```{r}
+# Excludes each team's first game of the year, as no previous stats exist to predict outcome
+
+game_data <- na.omit(game_data)
+
+# Create new column for point differential
+
+game_data$point_dif <- game_data$team_1_points - game_data$team_2_points
+
+# Split data into training and test sets
+
+set.seed(1)
+
+#dt = sort(sample(nrow(game_data), nrow(game_data)*.8))
+train_data <- game_data[game_data$yearSeason == "2018",]
+test_data <- game_data[game_data$yearSeason == "2019",]
+
+head(train_data, 15)
+dim(train_data)
+dim(test_data)
+```
+
+```{r}
+train_data$outcomeGame <- as.factor(train_data$outcomeGame)
+```
+
+**Random Forest Model**
+
+```{r}
+library(caret)
+
+library(randomForest)
+
+set.seed(1) # Set random number generator seed for reproducability
+# Use random forest to do bagging
+bag_mod <- randomForest(outcomeGame ~., # Set tree formula
+                data = train_data[,7:91], # Set dataset
+                mtry = 86, # Set mtry to number of variables 
+                ntree = 200) # Set number of trees to use
+bag_mod # View model
+
+
+bag_preds <- predict(bag_mod, test_data) # Create predictions for bagging model
+
+t <- table(bag_preds,test_data$outcome) # Create table
+confusionMatrix(t,  positive = "W") # Produce confusion matrix
+```
+
+```{r}
+# Extract Importance
+importance_matrix <- randomForest::importance(bag_mod)
+
+# Order and print importance matrix
+
+importance_matrix <- importance_matrix[order(importance_matrix, decreasing = T), ]
+
+importance_matrix
+```
+
+```{r}
+library(xgboost)
+
+# Create training matrix
+dtrain <- xgb.DMatrix(data = as.matrix(train_data[, -c(1:7, 92:94)]), label = train_data$point_dif)
+# Create test matrix
+dtest <- xgb.DMatrix(data = as.matrix(test_data[, -c((1:7),(92:94))]), label = test_data$point_dif)
+```
+
+```{r}
+set.seed(2374)
+
+nba_bst_1 <- xgboost(data = dtrain, # Set training data
+
+               
+
+               nrounds = 100, # Set number of rounds
+
+               
+
+               verbose = 1, # 1 - Prints out fit
+
+                print_every_n = 20 # Prints out result every 20th iteration
+
+ ) 
+```
+
+### Predicting with XGBoost
+
+```{r xbgoost predictions_1}
+library(Metrics)
+
+nba_bst_preds_1 <- predict(nba_bst_1, dtest) # Create predictions for xgboost model
+
+nba_bst_1_rmse <- rmse(actual = test_data$point_dif, predicted = nba_bst_preds_1)
+
+nba_bst_1_rmse
+```
+
+**Parameter Tuning**
+
+```{r xgboost param tuning}
+# Use xgb.cv to run cross-validation inside xgboost
+set.seed(2374)
+bst <- xgb.cv(data = dtrain, # Set training data
+              
+              nfold = 5, # Use 5 fold cross-validation
+               
+               eta = 0.1, # Set learning rate
+              
+               nrounds = 1000, # Set number of rounds
+               early_stopping_rounds = 50, # Set number of rounds to stop at if there is no improvement
+               
+               verbose = 1, # 1 - Prints out fit
+               nthread = 1, # Set number of parallel threads
+               print_every_n = 20) # Prints out result every 20th iteration
+```
+
+**Maximum Depth & Minimum Child Weight Tuning**
+
+```{r tune xgb params 1}
+#This can take a very long time to run
+max_depth_vals <- c(3, 5, 7, 10, 15) # Create vector of max depth values
+min_child_weight <- c(1,3,5,7, 10, 15) # Create vector of min child values
+
+# Expand grid of parameter values
+cv_params <- expand.grid(max_depth_vals, min_child_weight)
+names(cv_params) <- c("max_depth", "min_child_weight")
+# Create results vector
+rmse_vec <- rep(NA, nrow(cv_params))
+```
+
+
+```{r tune xgb params 2}
+# Loop through results
+for(i in 1:nrow(cv_params)){
+  set.seed(2374)
+  bst_tune <- xgb.cv(data = dtrain, # Set training data
+        
+    nfold = 5, # Use 5 fold cross-validation
+               
+    eta = 0.1, # Set learning rate
+    max.depth = cv_params$max_depth[i], # Set max depth
+    min_child_weight = cv_params$min_child_weight[i], # Set minimum number of samples in node to split
+             
+               
+    nrounds = 500, # Set number of rounds
+    early_stopping_rounds = 50, # Set number of rounds to stop at if there is no improvement
+               
+    verbose = 1, # 1 - Prints out fit
+    nthread = 1, # Set number of parallel threads
+    print_every_n = 20,
+    eval_metric = "rmse") # Prints out result every 20th iteration
+               
+
+  rmse_vec[i] <- bst_tune$evaluation_log$test_rmse_mean[bst_tune$best_ntreelimit]
+
+}
+
+```
+
+```{r Visualise Tune 1}
+# Join results in dataset
+res_db <- cbind.data.frame(cv_params, rmse_vec)
+names(res_db)[3] <- c("rmse") 
+res_db$max_depth <- as.factor(res_db$max_depth) # Convert tree number to factor for plotting
+res_db$min_child_weight <- as.factor(res_db$min_child_weight) # Convert node size to factor for plotting
+# Print RMSE heatmap
+g_3 <- ggplot(res_db, aes(y = max_depth, x = min_child_weight, fill = rmse)) + # set aesthetics
+  geom_tile() + # Use geom_tile for heatmap
+  theme_bw() + # Set theme
+  scale_fill_gradient2(low = "blue", # Choose low color
+    mid = "white", # Choose mid color
+    high = "red", # Choose high color
+    midpoint =mean(res_db$rmse), # Choose mid point
+    space = "Lab", 
+    na.value ="grey", # Choose NA value
+    guide = "colourbar", # Set color bar
+    aesthetics = "fill") + # Select aesthetics to apply
+  labs(title = "RMSE", x = "Minimum Child Weight", y = "Max Depth", fill = "Scale") # Set labels
+g_3 # Generate plot
+```
+
+**Gamma Tuning**
+
+```{r gamma tuning}
+gamma_vals <- c(0, 0.05, 0.1, 0.15, 0.2) # Create vector of gamma values
+
+#This can take a very long time to run
+set.seed(2374)
+# Create results vector
+rmse_vec_2  <- rep(NA, length(gamma_vals))
+for(i in 1:length(gamma_vals)){
+  bst_tune_2 <- xgb.cv(data = dtrain, # Set training data
+              
+              nfold = 5, # Use 5 fold cross-validation
+               
+              eta = 0.1, # Set learning rate
+              max.depth = 5, # Set max depth
+              min_child_weight = 3, # Set minimum number of samples in node to split
+              gamma = gamma_vals[i], # Set minimum loss reduction for split
+
+              
+               
+              nrounds = 500, # Set number of rounds
+              early_stopping_rounds = 50, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+               
+              eval_metric = "rmse") # Prints out result every 20th iteration
+               
+
+  rmse_vec_2[i] <- bst_tune_2$evaluation_log$test_rmse_mean[bst_tune$best_ntreelimit]
+
+}
+```
+
+The gamma with the lowest test-rmse is 0.1.
+
+```{r tune xgb samples}
+
+#This can take a very long time to run
+subsample <- c(0.6, 0.7, 0.8, 0.9, 1) # Create vector of subsample values
+colsample_by_tree <- c(0.6, 0.7, 0.8, 0.9, 1) # Create vector of col sample values
+
+# Expand grid of tuning parameters
+cv_params_3 <- expand.grid(subsample, colsample_by_tree)
+names(cv_params_3) <- c("subsample", "colsample_by_tree")
+# Create results vector
+rmse_vec_3 <-  rep(NA, nrow(cv_params_3))
+# Loop through parameter values
+for(i in 1:nrow(cv_params_3)){
+  set.seed(2374)
+  bst_tune_3 <- xgb.cv(data = dtrain, # Set training data
+              
+              nfold = 5, # Use 5 fold cross-validation
+               
+              eta = 0.1, # Set learning rate
+              max.depth = 5, # Set max depth
+              min_child_weight = 3, # Set minimum number of samples in node to split
+              gamma = 0.1, # Set minimum loss reduction for split
+              subsample = cv_params_3$subsample[i], # Set proportion of training data to use in tree
+              colsample_bytree = cv_params_3$colsample_by_tree[i], # Set number of variables to use in each tree
+               
+              nrounds = 500, # Set number of rounds
+              early_stopping_rounds = 50, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+               
+              eval_metric = "rmse") # Prints out result every 20th iteration
+               
+
+  rmse_vec_3[i] <- bst_tune_3$evaluation_log$test_rmse_mean[bst_tune_3$best_ntreelimit]
+}
+  
+```
+
+```{r Visualise Tune 2}
+# Join results in dataset
+res_db_3 <- cbind.data.frame(cv_params_3, rmse_vec_3)
+names(res_db_3)[3] <- c("rmse") 
+res_db_3$colsample_by_tree <- as.factor(res_db_3$colsample_by_tree) # Convert tree number to factor for plotting
+res_db_3$subsample <- as.factor(res_db_3$subsample) # Convert node size to factor for plotting
+# Print RMSE heatmap
+g_4 <- ggplot(res_db_3, aes(y = colsample_by_tree, x = subsample, fill = rmse)) + # set aesthetics
+  geom_tile() + # Use geom_tile for heatmap
+  theme_bw() + # Set theme
+  scale_fill_gradient2(low = "blue", # Choose low color
+    mid = "white", # Choose mid color
+    high = "red", # Choose high color
+    midpoint =mean(res_db$rmse), # Choose mid point
+    space = "Lab", 
+    na.value ="grey", # Choose NA value
+    guide = "colourbar", # Set color bar
+    aesthetics = "fill") + # Select aesthetics to apply
+  labs(title = "RMSE", x = "Subsample", y = "Column Sample", fill = "Scale") # Set labels
+g_4 # Generate plot
+
+```
+
+**eta Tuning**
+
+```{r eta tuning}
+
+# Use xgb.cv to run cross-validation inside xgboost
+set.seed(2374)
+bst_mod_1 <- xgb.cv(data = dtrain, # Set training data
+              
+              nfold = 5, # Use 5 fold cross-validation
+               
+              eta = 0.3, # Set learning rate
+              max.depth = 5, # Set max depth
+              min_child_weight = 3, # Set minimum number of samples in node to split
+              gamma = 0.15, # Set minimum loss reduction for split
+              subsample = 0.7, # Set proportion of training data to use in tree
+              colsample_bytree = 1, # Set number of variables to use in each tree
+               
+              nrounds = 1000, # Set number of rounds
+              early_stopping_rounds = 20, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+
+              eval_metric = "rmse") # Prints out result every 20th iteration
+
+
+set.seed(2374) 
+bst_mod_2 <- xgb.cv(data = dtrain, # Set training data
+              
+              nfold = 5, # Use 5 fold cross-validation
+               
+              eta = 0.1, # Set learning rate
+              max.depth = 5, # Set max depth
+              min_child_weight = 3, # Set minimum number of samples in node to split
+              gamma = 0.15, # Set minimum loss reduction for split
+              subsample = 0.7, # Set proportion of training data to use in tree
+              colsample_bytree = 1, # Set number of variables to use in each tree
+               
+              nrounds = 1000, # Set number of rounds
+              early_stopping_rounds = 20, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+              eval_metric = "rmse") # Prints out result every 20th iteration
+
+
+set.seed(2374)
+bst_mod_3 <- xgb.cv(data = dtrain, # Set training data
+              
+              nfold = 5, # Use 5 fold cross-validation
+               
+              eta = 0.05, # Set learning rate
+              max.depth = 5, # Set max depth
+              min_child_weight = 3, # Set minimum number of samples in node to split
+              gamma = 0.15, # Set minimum loss reduction for split
+              subsample = 0.7, # Set proportion of training data to use in tree
+              colsample_bytree = 1, # Set number of variables to use in each tree
+               
+              nrounds = 1000, # Set number of rounds
+              early_stopping_rounds = 20, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+     
+              eval_metric = "rmse") # Prints out result every 20th iteration
+
+
+set.seed(2374)
+bst_mod_4 <- xgb.cv(data = dtrain, # Set training data
+              
+              nfold = 5, # Use 5 fold cross-validation
+               
+              eta = 0.01, # Set learning rate
+              max.depth = 5, # Set max depth
+              min_child_weight = 3, # Set minimum number of samples in node to split
+              gamma = 0.15, # Set minimum loss reduction for split
+              subsample = 0.7, # Set proportion of training data to use in tree
+              colsample_bytree = 1, # Set number of variables to use in each tree
+              
+              nrounds = 1000, # Set number of rounds
+              early_stopping_rounds = 20, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+
+              eval_metric = "rmse") # Prints out result every 20th iteration
+
+set.seed(2374)
+bst_mod_5 <- xgb.cv(data = dtrain, # Set training data
+              
+              nfold = 5, # Use 5 fold cross-validation
+               
+              eta = 0.005, # Set learning rate
+              max.depth = 5, # Set max depth
+              min_child_weight = 3, # Set minimum number of samples in node to split
+              gamma = 0.15, # Set minimum loss reduction for split
+              subsample = 0.7, # Set proportion of training data to use in tree
+              colsample_bytree = 1, # Set number of variables to use in each tree
+               
+              nrounds = 1000, # Set number of rounds
+              early_stopping_rounds = 20, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+               
+      
+              eval_metric = "rmse") # Prints out result every 20th iteration
+```
+
+We can now plot the error rate over different learning rates:
+
+```{r eta plots}
+
+# Extract results for model with eta = 0.3
+pd1 <- cbind.data.frame(bst_mod_1$evaluation_log[,c("iter", "test_rmse_mean")], rep(0.3, nrow(bst_mod_1$evaluation_log)))
+names(pd1)[3] <- "eta"
+# Extract results for model with eta = 0.1
+pd2 <- cbind.data.frame(bst_mod_2$evaluation_log[,c("iter", "test_rmse_mean")], rep(0.1, nrow(bst_mod_2$evaluation_log)))
+names(pd2)[3] <- "eta"
+# Extract results for model with eta = 0.05
+pd3 <- cbind.data.frame(bst_mod_3$evaluation_log[,c("iter", "test_rmse_mean")], rep(0.05, nrow(bst_mod_3$evaluation_log)))
+names(pd3)[3] <- "eta"
+# Extract results for model with eta = 0.01
+pd4 <- cbind.data.frame(bst_mod_4$evaluation_log[,c("iter", "test_rmse_mean")], rep(0.01, nrow(bst_mod_4$evaluation_log)))
+names(pd4)[3] <- "eta"
+# Extract results for model with eta = 0.005
+pd5 <- cbind.data.frame(bst_mod_5$evaluation_log[,c("iter", "test_rmse_mean")], rep(0.005, nrow(bst_mod_5$evaluation_log)))
+names(pd5)[3] <- "eta"
+# Join datasets
+plot_data <- rbind.data.frame(pd1, pd2, pd3, pd4, pd5)
+# Converty ETA to factor
+plot_data$eta <- as.factor(plot_data$eta)
+# Plot points
+g_5 <- ggplot(plot_data, aes(x = iter, y = test_rmse_mean, color = eta))+
+  geom_point(alpha = 0.5) +
+  theme_bw() + # Set theme
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "Number of Trees", title = "RMSE v Number of Trees",
+       y = "RMSE", color = "Learning \n Rate")  # Set labels
+g_5
+
+# Plot lines
+g_6 <- ggplot(plot_data, aes(x = iter, y = test_rmse_mean, color = eta))+
+  geom_smooth(alpha = 0.5) +
+  theme_bw() + # Set theme
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "Number of Trees", title = "RMSE v Number of Trees",
+       y = "RMSE", color = "Learning \n Rate")  # Set labels
+g_6
+
+```
+
+```{r}
+#Final Tuned Model
+
+set.seed(2374)
+nba_bst_mod_final <- xgboost(data = dtrain, # Set training data
+              
+              nfold = 5, # Use 5 fold cross-validation
+               
+              eta = 0.05, # Set learning rate
+              max.depth = 5, # Set max depth
+              min_child_weight = 3, # Set minimum number of samples in node to split
+              gamma = 0.1, # Set minimum loss reduction for split
+              subsample = 0.7, # Set proportion of training data to use in tree
+              colsample_bytree = 1, # Set number of variables to use in each tree
+               
+              nrounds = 100, # Set number of rounds
+              early_stopping_rounds = 20, # Set number of rounds to stop at if there is no improvement
+               
+              verbose = 1, # 1 - Prints out fit
+              nthread = 1, # Set number of parallel threads
+              print_every_n = 20, # Prints out result every 20th iteration
+              
+
+              eval_metric = "rmse") # Prints out result every 20th iteration
+
+```
+
+```{r}
+nba_bst_preds_final <- predict(nba_bst_mod_final, dtest) # Create predictions for xgboost model
+```
+
+
+```{r}
+nba_bst_final_rmse <- rmse(actual = test_data$point_dif, predicted = nba_bst_preds_final)
+
+nba_bst_final_rmse
+```
+
+```{r}
+# Extract importance
+imp_mat <- xgb.importance(model = nba_bst_mod_final)
+# Plot importance (top 10 variables)
+xgb.plot.importance(imp_mat, top_n = 10)
+
+```
+
+```{r}
+# Load SHAP functions
+source("a_insights_shap_functions.r")
+```
+
+```{r}
+# Calculate SHAP importance
+shap_result_1 <- shap.score.rank(xgb_model = nba_bst_mod_final, 
+                X_train =as.matrix(train_data[, -c(1:7, 92:94)]),
+                shap_approx = F)
+```
+
+```{r}
+shap_long_1 = shap.prep(shap = shap_result_1,
+                           X_train = as.matrix(train_data[, -c(1:7, 92:94)]), 
+                           top_n = 10)
+
+# Generate SHAP plot
+plot.shap.summary(data_long = shap_long_1)
+```
+
+fgm_1_off = average amount of field goals made in last 10 games by team 1, fgm_1_def= average field goals scored against team 1 by opponents in last 10 games, fgm_2_off = average amount of field goals made in last 10 games by team 2, fgm_2_def = average field goals scored against team 2 by opponents in last 10 games
+
+##### Identify the impact of individual players on team stats
+
+##### Replacing Player Stats with the average of their position and Predicting point difference
+
+```{r}
+# Create table of player IDs
+temp <- unique(reg_data[, c("namePlayer", "idPlayer")])
+# View player IDs
+temp
+
+```
+
+```{r}
+# Create table of games and teans
+temp2 <- unique(reg_data[, c("idGame", "nameTeam", "slugTeam", "slugOpponent")])
+# View game ids
+temp2
+```
+
+
+```{r}
+#Will be using this chunk to extract individual players from the teams we choose to dive into a deeper analysis on
+
+# Calculate days
+day_calc <- function(dates){
+  x <- as.POSIXct(dates)
+  return(floor(unclass(x)/86400))
+}
+# Add days to player data
+reg_data$days <- day_calc(reg_data$dateGame)
+# Create data frames to store results
+off <- def <-  as.data.frame(matrix(NA, nrow = nrow(reg_data), ncol = 23))
+names(off) <- names(def) <- c("fgm", "fga", "fg3m", "fg3a", "fg2m",
+                       "fg2a", "ftm", "fta", "oreb", "dreb",
+                       "treb", "ast", "stl", "blk", "tov",
+                       "pf", "pts", "pctfg", "pctfg2", "pctfg3",
+                       "pctft", "mins", "games")
+
+
+
+
+# Loop through to calculate past averages
+for(i in 1:nrow(reg_data)){
+  print(i)
+  # Extract previous games for player offense
+  temp_1 <- reg_data[reg_data$slugSeason == reg_data$slugSeason[i] &
+                       reg_data$slugTeam == reg_data$slugTeam[i] &
+                       reg_data$days < reg_data$days[i] &
+                       reg_data$idPlayer == reg_data$idPlayer[i],]
+  # If any exist
+  if(nrow(temp_1) > 0){
+    # Calculate previous averages
+    t1 <- temp_1[, c("fgm", "fga", "fg3m", "fg3a", "fg2m",
+                                                         "fg2a", "ftm", "fta", "oreb", "dreb",
+                                                         "treb", "ast", "stl", "blk", "tov",
+                                                         "pf", "pts")]/temp_1$minutes
+  
+  off[i, c("fgm", "fga", "fg3m", "fg3a", "fg2m",
+           "fg2a", "ftm", "fta", "oreb", "dreb",
+           "treb", "ast", "stl", "blk", "tov",
+           "pf", "pts")] <- colMeans(t1, na.rm = TRUE)
+  off[i, c("mins")] <- mean(temp_1$minutes)
+  off[i,c("games")] <- nrow(temp_1)
+  # Calculate pctfg, pctfg2 pctfg3, pctft
+  off$pctfg[i] <- sum(temp_1$fgm, na.rm = TRUE)/sum(temp_1$fga, na.rm = TRUE)
+  off$pctfg2[i] <- sum(temp_1$fg2m, na.rm = TRUE)/sum(temp_1$fg2a, na.rm = TRUE)
+  off$pctfg3[i] <- sum(temp_1$fg3m, na.rm = TRUE)/sum(temp_1$fg3a, na.rm = TRUE)
+  off$pctft[i] <- sum(temp_1$ftm, na.rm = TRUE)/sum(temp_1$fta, na.rm = TRUE)
+    
+    
+
+  }
+  
+  player_games <- reg_data[reg_data$idPlayer == reg_data$idPlayer[i], c("idGame", "minutes")]
+  # Extract previous games for team 1 defense
+  temp_2 <- team_game[team_game$slugSeason == reg_data$slugSeason[i] &
+                        team_game$slugOpponent == reg_data$slugTeam[i] &
+                        team_game$days < reg_data$days[i],]
+  # If any exist
+  if(nrow(temp_2) > 0 &
+     sum(temp_2$idGame %in% player_games$idGame) > 0){
+    
+    stats <- temp_2[, c("fgm", "fga", "fg3m", "fg3a", "fg2m",
+                        "fg2a", "ftm", "fta", "oreb", "dreb",
+                        "treb", "ast", "stl", "blk", "tov",
+                        "pf", "pts")]
+    
+    game_mins <- rep(NA, nrow(temp_2))
+    for(j in 1:nrow(temp_2)){
+      if(temp_2$idGame[j] %in% player_games$idGame){
+        game_mins[j] <- player_games$minutes[which(player_games$idGame == temp_2$idGame[j])]
+      }
+      
+    }
+    
+    
+    stats_use <- stats[!is.na(game_mins),]
+    game_mins_use <- game_mins[!is.na(game_mins)]
+    stats_avg <- stats_use/game_mins_use
+    # Calculate past defensive averages
+    def[i,c("fgm", "fga", "fg3m", "fg3a", "fg2m",
+           "fg2a", "ftm", "fta", "oreb", "dreb",
+           "treb", "ast", "stl", "blk", "tov",
+           "pf", "pts")] <- colMeans(stats_avg, na.rm = T)
+    
+    # Calculate pctfg, pctfg2 pctfg3, pctft
+    def$pctfg[i] <- sum(stats_use$fgm, na.rm = TRUE)/sum(stats_use$fga, na.rm = TRUE)
+    def$pctfg2[i] <- sum(stats_use$fg2m, na.rm = TRUE)/sum(stats_use$fg2a, na.rm = TRUE)
+    def$pctfg3[i] <- sum(stats_use$fg3m, na.rm = TRUE)/sum(stats_use$fg3a, na.rm = TRUE)
+    def$pctft[i] <- sum(stats_use$ftm, na.rm = TRUE)/sum(stats_use$fta, na.rm = TRUE)
+
+  }
+}  
+  
+summary(def)
+summary(off)
+
+
+for(i in 1:ncol(off)){
+  off[!is.finite(off[,i]),i] <- 0
+  def[!is.finite(def[,i]),i] <- 0
+}
+
+
+names(off) <- paste(names(off), "_1_off", sep = "")
+names(def) <- paste(names(def), "_1_def", sep = "")
+res_dat <- cbind.data.frame(reg_data[,c("idGame", "nameTeam", "slugTeam", "slugOpponent",
+                                        "idPlayer", "namePlayer")], 
+                            off, def)
+
+stat_player_mod <- function(playerid = NULL, gameid = NULL,
+                            res_dat, game_data){
+  #'
+  #' This function subtracts a players stats from the game
+  #' and replaces them with the stats of an average player.
+  #'
+  #' @param playerid The player ID of interest
+  #' @param gameid The game ID of interest
+  #' @param res_dat The offensive/defensive player stats
+  #' gae
+  #' 
+  #' 
+  #'
+  
+  player_data_index_1 <- which(res_dat$idGame == gameid &
+                               res_dat$idPlayer == playerid)
+  
+  game_data_index_1 <- which(game_data$idGame == gameid & 
+                               game_data$slugTeam == res_dat$slugTeam[player_data_index_1])
+  
+  game_data_index_2 <- which(game_data$idGame == gameid & 
+                               game_data$slugTeam == res_dat$slugOpponent[player_data_index_1])
+  
+  cols1 <- c("fgm_1_off", "fga_1_off",   
+            "fg3m_1_off", "fg3a_1_off", "fg2m_1_off", "fg2a_1_off", "ftm_1_off", "fta_1_off", "oreb_1_off",  
+            "dreb_1_off", "treb_1_off", "ast_1_off", "stl_1_off", "blk_1_off", "tov_1_off", "pf_1_off",    
+            "pts_1_off",    "pctfg_1_off",  "pctfg2_1_off", "pctfg3_1_off", "pctft_1_off", 
+            "fgm_1_def",    "fga_1_def",    "fg3m_1_def",   "fg3a_1_def", 
+            "fg2m_1_def",   "fg2a_1_def", "ftm_1_def",   
+            "fta_1_def",    "oreb_1_def",   "dreb_1_def",
+            "treb_1_def",   "ast_1_def",    "stl_1_def",    "blk_1_def",   
+            "tov_1_def",    "pf_1_def",     "pts_1_def",    "pctfg_1_def",
+            "pctfg2_1_def", "pctfg3_1_def", "pctft_1_def")
+  
+  cols2 <- c("fgm_2_off", "fga_2_off",   
+             "fg3m_2_off", "fg3a_2_off", "fg2m_2_off", "fg2a_2_off", "ftm_2_off", "fta_2_off", "oreb_2_off",  
+             "dreb_2_off", "treb_2_off", "ast_2_off", "stl_2_off", "blk_2_off", "tov_2_off", "pf_2_off",    
+             "pts_2_off",    "pctfg_2_off",  "pctfg2_2_off", "pctfg3_2_off", "pctft_2_off", 
+             "fgm_2_def",    "fga_2_def",    "fg3m_2_def",   "fg3a_2_def", 
+             "fg2m_2_def",   "fg2a_2_def", "ftm_2_def",   
+             "fta_2_def",    "oreb_2_def",   "dreb_2_def",
+             "treb_2_def",   "ast_2_def",    "stl_2_def",    "blk_2_def",   
+             "tov_2_def",    "pf_2_def",     "pts_2_def",    "pctfg_2_def",
+             "pctfg2_2_def", "pctfg3_2_def", "pctft_2_def")
+
+ 
+  
+  
+  team_stats <- game_data[game_data_index_1, cols1] 
+  
+  m_vec <- c("fgm_1_off", "fga_1_off",   
+             "fg3m_1_off", "fg3a_1_off", "fg2m_1_off", "fg2a_1_off", "ftm_1_off", "fta_1_off", "oreb_1_off",  
+             "dreb_1_off", "treb_1_off", "ast_1_off", "stl_1_off", "blk_1_off", "tov_1_off", "pf_1_off",    
+             "pts_1_off","fgm_1_def",    "fga_1_def",    "fg3m_1_def",   "fg3a_1_def", 
+             "fg2m_1_def",   "fg2a_1_def", "ftm_1_def",   
+             "fta_1_def",    "oreb_1_def",   "dreb_1_def",
+             "treb_1_def",   "ast_1_def",    "stl_1_def",    "blk_1_def",   
+             "tov_1_def",    "pf_1_def",     "pts_1_def")
+  
+  m_stats <- colMeans(res_dat[res_dat$mins_1_off > 25,m_vec], na.rm =TRUE)
+
+  team_stats[,m_vec] <- team_stats[,m_vec] - 
+    (res_dat[player_data_index_1, m_vec] * res_dat$mins_1_off[player_data_index_1]) + 
+    (m_stats[m_vec] * res_dat$mins_1_off[player_data_index_1]) 
+  
+  # Recalculate averages
+  team_stats$pctfg_1_off <- team_stats$fgm_1_off/team_stats$fga_1_off
+  team_stats$pctfg2_1_off <- team_stats$fg2m_1_off/team_stats$fg2a_1_off
+  team_stats$pctfg3_1_off<- team_stats$fg3m_1_off/team_stats$fg3m_1_off
+  team_stats$pctft_1_off <- team_stats$ftm_1_off/team_stats$fta_1_off
+  team_stats$pctfg_1_def <- team_stats$fgm_1_def/team_stats$fga_1_def
+  team_stats$pctfg2_1_def <- team_stats$fg2m_1_def/team_stats$fg2a_1_def
+  team_stats$pctfg3_1_def<- team_stats$fg3m_1_def/team_stats$fg3m_1_def
+  team_stats$pctft_1_def <- team_stats$ftm_1_def/team_stats$fta_1_def
+  
+  # Assign to team 1
+  game_data[game_data_index_1, cols1] <- team_stats
+  game_data[game_data_index_2, cols2] <- team_stats
+  
+  return(game_data)
+} 
+
+
+game_data[1500,]
+
+res_dat[res_dat$idGame == 21700100,]
+
+
+# Input player ID, and game ID of interest
+game_data_2 <- stat_player_mod(playerid =201939,
+                               gameid = 21700100,
+                               res_dat = res_dat, 
+                               game_data = game_data)
+
+rbind(game_data[game_data$idGame == 21700100,],
+
+game_data_2[game_data$idGame == 21700100,])
+```
+
+```{r}
+game_data[game_data$slugTeam == "DEN",]
+game_data[game_data$yearSeason == 2019,]
+```
+
+
+```{r}
+dtest2 <- xgb.DMatrix(data = as.matrix(game_data_2[game_data_2$yearSeason == 2019, -c((1:7),(92:94))]))
+
+preds_2 <- predict(nba_bst_mod_final, dtest2)
+```
+
+```{r}
+cbind.data.frame(rbind(game_data[game_data$idGame == 21700100, 1:7],
+
+game_data_2[game_data$idGame == 21700100, 1:7]), c(nba_bst_preds_final[test_data$idGame == 21700100], preds_2[test_data$idGame == 21700100]))
+```
+
+```{r}
+#This was used to run all individual player analysis to look at point difference if player played vs if their stats were replaced with an average player
+game_id <- 21801173
+  player_id <- 203999
+  game_data_2 <- stat_player_mod(playerid = player_id,
+                               gameid = game_id,
+                               res_dat = res_dat, 
+                               game_data = game_data)
+  
+  dtest2 <- xgb.DMatrix(data = as.matrix(game_data_2[game_data_2$yearSeason == 2019, -c((1:7),(92:94))]))
+
+preds_2 <- predict(nba_bst_mod_final, dtest2)
+
+cbind.data.frame(rbind(game_data[game_data$idGame == game_id, 1:7],
+
+game_data_2[game_data$idGame == game_id, 1:7]), c(nba_bst_preds_final[test_data$idGame == game_id], preds_2[test_data$idGame == game_id]))
+```
+
+##### Individual Player Analysis on B2B nights, days rest, minutes played
+
+```{r}
+#Graph showing FG Percentage by Minutes Played
+# Select only players that have above 0 minutes of playing time and 3 attempted field goals
+player_dfmin <- player_df[player_df$minutes != "0" &
+                            player_df$fga >= "3",]
+head(player_dfmin)
+
+g_5 = ggplot(player_dfmin, aes(x = minutes, y = pctFG)) + # Create 
+  geom_point(color = "blue", alpha = 0.3, size = 4) + # Add points to plot, color blue, make transparent
+  labs(x = "Minutes Played",  # Add x-axis label
+       y = "Field Goal Percentage", # Add y-axis label
+       title = "FG Percentage vs Minutes Played") # Add title
+  
+  
+  #### Ignore lines below this for now ####
+  theme(axis.line = element_line(colour = "black"), # Set axis line as black
+        panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) # Remove grid
+
+g_5
+```
+
+```{r}
+#Graph showing histogram of Field Goal Percentage distribution
+g_6 <- ggplot(player_dfmin, aes(x = pctFG)) + # Only set x axis variable for histograms
+  geom_density(fill = "blue") + # Create a histogram, hardcode fill
+  labs(x = "Field Goal Percentage",  # Add x-axis label
+       title = "Histogram of Field Goal Percentage") +  # Add title
+    theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank(), # Remove grid
+        plot.subtitle = element_text(face = "italic")) # Set subtitle as italic
+
+g_6
+```
+
+```{r}
+#Graph that shows Plus Minus of individual players depending on if they were on a back to back or not
+
+# Select only players with 0, 1, 2 days of rest
+daysrest <- player_df[player_df$countDaysRestPlayer %in% c("0", "1", "2"),]
+head(daysrest)
+
+# Generate plot
+g_7 <- ggplot(daysrest, aes(x=plusminus, y=minutes, color = outcomeGame)) + # Create plot
+  geom_point(alpha = 0.3, size = 3) + # Add points to plot
+  facet_wrap(~isB2B) +
+  labs(x = "Plus Minus",  # Add x-axis label
+       y = "Minutes Played", # Add y-axis label
+       color = "Outcome", # Add color label
+       title = "Minutes and Plus Minus if on B2B or not") + # Add title
+  
+  
+  #### Ignore lines below this for now ####
+  theme(axis.line = element_line(colour = "black"), # Set axis line as black
+        panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank(), # Remove grid
+        plot.subtitle = element_text(face = "italic"),
+        legend.position = "bottom") # Set legend position at bottom of plot
+g_7
+```
+
+
+```{r}
+#Graph showing distribution of plus minus of players who were on the first night of a back to back versus not on a B2B
+# Select only back-to-back games excluding the first game of the season
+
+B2B <- player_df[which(player_df$isB2B == "TRUE" &
+                         player_df$countDaysRestTeam != "120"),]
+head(B2B)
+
+g_8 <- ggplot(B2B, aes(x = plusminus, fill = isB2BFirst)) + # Set x as plus minus and fill as if on first night of B2B or not
+  geom_density(alpha = 0.4) + # Select density plot and set transperancy
+    theme_set(theme_bw(base_size = 22) ) + # Set theme and text size
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "Plus Minus", title = "Plus Minus on First Night of B2B",
+       fill = "First Night of B2B?") # Set labels
+g_8 # Generate plot
+
+```
+
+```{r}
+#Graph showing distribution of plus minus of players who were on the second night of a back to back versus not on a B2B
+
+g_9<- ggplot(B2B, aes(x = plusminus, fill = isB2BSecond)) + # Set x as plus minus and fill as game outcome
+  geom_density(alpha = 0.4) + # Select density plot and set transperancy (alpha)
+    theme_set(theme_bw(base_size = 22) ) + # Set theme and text size
+  theme(panel.grid.major = element_blank(), # Remove grid
+        panel.grid.minor = element_blank(), # Remove grid
+        panel.border = element_blank(), # Remove grid
+        panel.background = element_blank()) + # Remove grid 
+  labs(x = "Plus Minus", title = "Plus Minus on Second Night of B2B",
+       fill = "Second Night of B2B?") # Set labels
+g_9 # Generate plot
+
+```
+
+```{r}
+#Graph of players that connects them based on days rest after selecting specific players
+players <- c("Nikola Jokic", "Jayson Tatum")
+player_data <- # Pull out data for multiple players
+days_rest_vals <- unique(player_data$days_rest)
+res_dat <- expand.grid(players, days_rest_vals)
+avg_stat <- rep(NA, length(days_rest_vals))
+for(i in 1:length(days_rest_vals)){
+  avg_stat[i] <- mean(player_data$metric[player_data$days_rest == res_dat$days_rest_vals[i] &
+                                           player_data$player == res_dat$players[i]], na.rm = TRUE)
+  
+}
+
+plot_dat <- cbind.data.frame(res_dat, avg_stat)
+
+```
+
+
+
+
